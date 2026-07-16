@@ -179,7 +179,7 @@
 
   <script>
     // MASUKKAN LINK EXECUTABLE WEB APP GOOGLE SCRIPT ANDA DI SINI
-    const urlScript = "https://script.google.com/macros/s/AKfycbwQDgJBOIhnoVDFKjMOQ0BN5CBuhiAmHOS-N3tzRwjOQYyFCIpM3aIEUrCfqJfuSLT1fQ/exec";
+    const urlScript = "https://script.google.com/macros/s/AKfycbxBTcXQTXkllSVZh9t-9iRmLGYZGup6GC-GLPW1EKxov_O270f94yQeR_9aqnvBHDGcHQ/exec";
     let allLinks = [];
     let isAdmin = false;
     let logInterval;
@@ -196,7 +196,6 @@
       if (isAdmin) {
         setAdminMode(false);
         sessionStorage.removeItem("isAdmin");
-        renderCards(allLinks);
         alert("Mode administrator dinonaktifkan.");
       } else {
         const password = prompt("Masukkan Kredensial Akses Admin:");
@@ -210,9 +209,8 @@
         .then(res => res.json())
         .then(res => {
           if(res.success) {
-            setAdminMode(true);
             sessionStorage.setItem("isAdmin", "true");
-            renderCards(allLinks);
+            setAdminMode(true);
             loadLogs(); // Instan segarkan log saat admin masuk
             alert(res.message);
           } else { alert(res.message); }
@@ -243,6 +241,9 @@
         badge.className = "inline-block bg-gray-200 text-gray-700 text-xs px-2.5 py-1 rounded-full font-medium shadow-sm";
         badge.innerHTML = `<i class="fa-solid fa-eye mr-1"></i> Mode: Pengunjung (Lihat Saja)`;
       }
+
+      // Setiap kali status Admin berubah (Login/Logout), segarkan data dan kirim log kunjungan
+      loadData(); 
     }
 
     // MENAMPILKAN ALIRAN LOG SECARA DYNAMIC & REAL-TIME
@@ -262,6 +263,7 @@
             if(log.tipe === "EDIT DATA") color = "bg-amber-50 border-amber-200 text-amber-700";
             if(log.tipe === "HAPUS DATA") color = "bg-rose-50 border-rose-200 text-rose-800";
             if(log.tipe === "GANTI PASSWORD") color = "bg-purple-50 border-purple-200 text-purple-800";
+            if(log.tipe === "MELIHAT DATA") color = "bg-gray-50 border-gray-200 text-gray-500 opacity-80"; // Log kunjungan abu-abu kalem
 
             const itemHtml = `
               <div class="p-2.5 rounded-lg border shadow-2xs ${color} transition duration-300">
@@ -276,6 +278,26 @@
             container.insertAdjacentHTML('beforeend', itemHtml);
           });
         }).catch(err => console.error("Gagal melakukan sinkronisasi log stream:", err));
+    }
+
+    // AMBIL DATA & LOG KUNJUNGAN SECARA DINAMIS
+    function loadData() {
+      showLoading(true);
+      
+      // Kirim parameter role (ADMIN / PENGUNJUNG) ke Google Script untuk dicatat ke log otomatis
+      const currentRole = isAdmin ? "ADMIN" : "PENGUNJUNG";
+
+      fetch(`${urlScript}?action=getDashboard&role=${currentRole}`)
+        .then(response => response.json())
+        .then(response => {
+          if (response && response.links) {
+            allLinks = response.links;
+            document.getElementById('stat-total').innerText = response.stats.total || 0;
+            document.getElementById('stat-kategori').innerText = response.stats.totalKategori || 0;
+            renderCards(allLinks);
+          }
+          showLoading(false);
+        }).catch(err => { alert("Gagal mengambil data database: " + err); showLoading(false); });
     }
 
     function handleChangePasswordSubmit(e) {
@@ -299,21 +321,6 @@
         alert(res.message);
         if(res.success) { closePassModal(); loadLogs(); }
       }).catch(err => { alert("Error: " + err); btn.disabled = false; btn.innerText = "Perbarui"; });
-    }
-
-    function loadData() {
-      showLoading(true);
-      fetch(`${urlScript}?action=getDashboard`)
-        .then(response => response.json())
-        .then(response => {
-          if (response && response.links) {
-            allLinks = response.links;
-            document.getElementById('stat-total').innerText = response.stats.total || 0;
-            document.getElementById('stat-kategori').innerText = response.stats.totalKategori || 0;
-            renderCards(allLinks);
-          }
-          showLoading(false);
-        }).catch(err => { alert("Gagal mengambil data database: " + err); showLoading(false); });
     }
 
     function renderCards(data) {
