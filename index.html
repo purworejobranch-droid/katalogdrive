@@ -18,7 +18,6 @@
           <span class="font-bold text-base sm:text-lg tracking-wide">DriveCatalog</span>
         </div>
         <div class="flex items-center space-x-2">
-          <!-- Menu Khusus Admin (Ganti Pass) -->
           <button id="btn-ganti-pass" onclick="openPassModal()" class="hidden bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition items-center border border-indigo-500">
             <i class="fa-solid fa-key mr-1"></i> Ganti Pass
           </button>
@@ -42,10 +41,9 @@
       </span>
     </div>
 
-    <!-- Layout Grid Utama (Data Kanan, Live Log Kiri di layar besar) -->
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
       
-      <!-- Kolom Kiri: Real-Time Activity Log Stream (Kapasitas 1 Kolom) -->
+      <!-- Kolom Kiri: Real-Time Activity Log Stream -->
       <div class="lg:col-span-1 flex flex-col space-y-4">
         <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col h-[480px]">
           <div class="flex items-center justify-between border-b pb-2 mb-3">
@@ -58,16 +56,14 @@
             </h3>
             <button onclick="loadLogs()" class="text-gray-400 hover:text-indigo-600 transition text-xs"><i class="fa-solid fa-rotate"></i></button>
           </div>
-          <!-- Box Penampung Aliran Log -->
           <div id="log-stream-box" class="flex-1 overflow-y-auto space-y-2.5 text-[11px] pr-1">
             <p class="text-gray-400 text-center py-4">Menghubungkan ke stream...</p>
           </div>
         </div>
       </div>
 
-      <!-- Kolom Kanan: Dashboard Utama & Grid Katalog (Kapasitas 3 Kolom) -->
+      <!-- Kolom Kanan: Dashboard Utama & Grid Katalog -->
       <div class="lg:col-span-3 space-y-4">
-        <!-- Dashboard Stats Widgets -->
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-white p-3 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
@@ -89,7 +85,7 @@
         <div class="bg-white p-2.5 sm:p-4 rounded-xl shadow-sm border border-gray-100">
           <div class="relative">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 sm:top-3.5 text-gray-400 text-xs sm:text-sm"></i>
-            <input type="text" id="search-input" onkeyup="filterLinks()" placeholder="Cari judul, kategori, atau file..." 
+            <input type="text" id="search-input" onkeyup="handleSearchInput(this.value)" placeholder="Cari judul, kategori, atau file..." 
               class="w-full pl-9 pr-3 py-1.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-xs sm:text-sm">
           </div>
         </div>
@@ -179,16 +175,16 @@
 
   <script>
     // MASUKKAN LINK EXECUTABLE WEB APP GOOGLE SCRIPT ANDA DI SINI
-    const urlScript = "https://script.google.com/macros/s/AKfycbxBTcXQTXkllSVZh9t-9iRmLGYZGup6GC-GLPW1EKxov_O270f94yQeR_9aqnvBHDGcHQ/exec";
+    const urlScript = "https://script.google.com/macros/s/AKfycbyWz97PCCQ4WOBVoFH6CGs2e0EKB1YTYGhFX7IZJrUIYOgcgTIFI2HfdCJcKtiug5PbCA/exec";
     let allLinks = [];
     let isAdmin = false;
     let logInterval;
+    let searchTimeout;
 
     document.addEventListener("DOMContentLoaded", function() {
       if (sessionStorage.getItem("isAdmin") === "true") { setAdminMode(true); }
-      loadData();
+      loadData(""); // Pemuatan pertama kali tanpa kata kunci pencarian
       loadLogs();
-      // SISTEM LOG REAL-TIME STREAMING: Menarik data berkala otomatis dari Cloud per 15 detik
       logInterval = setInterval(loadLogs, 15000);
     });
 
@@ -201,7 +197,6 @@
         const password = prompt("Masukkan Kredensial Akses Admin:");
         if (password === null) return;
         
-        // Memeriksa password terenkripsi via API Sheets
         fetch(urlScript, {
           method: "POST",
           body: JSON.stringify({ action: "login", password: password })
@@ -211,7 +206,7 @@
           if(res.success) {
             sessionStorage.setItem("isAdmin", "true");
             setAdminMode(true);
-            loadLogs(); // Instan segarkan log saat admin masuk
+            loadLogs();
             alert(res.message);
           } else { alert(res.message); }
         }).catch(err => alert("Koneksi gagal: " + err));
@@ -242,11 +237,35 @@
         badge.innerHTML = `<i class="fa-solid fa-eye mr-1"></i> Mode: Pengunjung (Lihat Saja)`;
       }
 
-      // Setiap kali status Admin berubah (Login/Logout), segarkan data dan kirim log kunjungan
-      loadData(); 
+      loadData(""); 
     }
 
-    // MENAMPILKAN ALIRAN LOG SECARA DYNAMIC & REAL-TIME
+    // FUNGSI BARU: Melacak pengetikan pencarian dengan teknik debounce (menunggu berhenti mengetik 1.5 detik)
+    function handleSearchInput(value) {
+      filterLinks(); // Segarkan tampilan grid di UI secara instan
+      
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        if (value.trim() !== "") {
+          loadData(value.trim()); // Kirim log pencarian ke cloud setelah user selesai mengetik
+        }
+      }, 15000); // Penundaan sinkronisasi log pencarian
+    }
+
+    // MEMBUAT AKSI KLIK TOMBOL UNTUK TRACKING DETEL BERKAS SEBELUM DIBUKA
+    function trackAndOpen(url, fileTitle, categoryName) {
+      const currentRole = isAdmin ? "ADMIN" : "PENGUNJUNG";
+      
+      // Kirim sinyal tracking ke Google Script di background (jalur belakang)
+      fetch(`${urlScript}?action=logClick&role=${currentRole}&file=${encodeURIComponent(fileTitle)}&category=${encodeURIComponent(categoryName)}`)
+      .then(() => {
+        loadLogs(); // Perbarui log box secara instan
+      }).catch(err => console.error("Gagal mengirim log klik:", err));
+      
+      // Buka file asli Google Drive di tab baru browser
+      window.open(url, '_blank');
+    }
+
     function loadLogs() {
       fetch(`${urlScript}?action=getLogs`)
         .then(response => response.json())
@@ -263,7 +282,9 @@
             if(log.tipe === "EDIT DATA") color = "bg-amber-50 border-amber-200 text-amber-700";
             if(log.tipe === "HAPUS DATA") color = "bg-rose-50 border-rose-200 text-rose-800";
             if(log.tipe === "GANTI PASSWORD") color = "bg-purple-50 border-purple-200 text-purple-800";
-            if(log.tipe === "MELIHAT DATA") color = "bg-gray-50 border-gray-200 text-gray-500 opacity-80"; // Log kunjungan abu-abu kalem
+            if(log.tipe === "MELIHAT DATA") color = "bg-gray-50 border-gray-200 text-gray-400 opacity-60";
+            if(log.tipe === "MENCARI DATA") color = "bg-blue-50 border-blue-200 text-blue-700"; // Log warna biru untuk pencarian
+            if(log.tipe === "MEMBUKA FILE") color = "bg-indigo-50 border-indigo-200 text-indigo-800 font-medium"; // Log warna indigo untuk klik file
 
             const itemHtml = `
               <div class="p-2.5 rounded-lg border shadow-2xs ${color} transition duration-300">
@@ -277,17 +298,15 @@
             `;
             container.insertAdjacentHTML('beforeend', itemHtml);
           });
-        }).catch(err => console.error("Gagal melakukan sinkronisasi log stream:", err));
+        }).catch(err => console.error("Gagal sinkronisasi stream log:", err));
     }
 
-    // AMBIL DATA & LOG KUNJUNGAN SECARA DINAMIS
-    function loadData() {
+    function loadData(searchKeyword) {
       showLoading(true);
-      
-      // Kirim parameter role (ADMIN / PENGUNJUNG) ke Google Script untuk dicatat ke log otomatis
       const currentRole = isAdmin ? "ADMIN" : "PENGUNJUNG";
+      const queryParam = searchKeyword ? `&search=${encodeURIComponent(searchKeyword)}` : '';
 
-      fetch(`${urlScript}?action=getDashboard&role=${currentRole}`)
+      fetch(`${urlScript}?action=getDashboard&role=${currentRole}${queryParam}`)
         .then(response => response.json())
         .then(response => {
           if (response && response.links) {
@@ -298,29 +317,6 @@
           }
           showLoading(false);
         }).catch(err => { alert("Gagal mengambil data database: " + err); showLoading(false); });
-    }
-
-    function handleChangePasswordSubmit(e) {
-      e.preventDefault();
-      const btn = document.getElementById('btn-pass-submit');
-      btn.disabled = true;
-      btn.innerText = "...";
-
-      fetch(urlScript, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "changePassword",
-          oldPassword: document.getElementById('pass-lama').value,
-          newPassword: document.getElementById('pass-baru').value
-        })
-      })
-      .then(res => res.json())
-      .then(res => {
-        btn.disabled = false;
-        btn.innerText = "Perbarui";
-        alert(res.message);
-        if(res.success) { closePassModal(); loadLogs(); }
-      }).catch(err => { alert("Error: " + err); btn.disabled = false; btn.innerText = "Perbarui"; });
     }
 
     function renderCards(data) {
@@ -351,6 +347,7 @@
           </div>
         ` : '';
 
+        // Tautan <a> dirubah menggunakan tombol button dengan fungsi tracking JavaScript
         const card = `
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between hover:shadow-md transition duration-200">
             <div>
@@ -361,11 +358,11 @@
               <h4 class="font-bold text-gray-800 text-sm sm:text-base line-clamp-1 mb-0.5">${escapeHtml(item.judul)}</h4>
               <p class="text-[11px] text-gray-500 line-clamp-2 mb-3 h-8">${escapeHtml(item.deskripsi) || 'Tidak ada deskripsi.'}</p>
             </div>
-            <a href="${item.link}" target="_blank" class="w-full bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition py-2 px-3 rounded-lg text-xs font-semibold text-center flex items-center justify-center space-x-1.5">
+            <button onclick="trackAndOpen('${item.link}', '${escapeHtml(item.judul)}', '${escapeHtml(item.kategori)}')" class="w-full bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition py-2 px-3 rounded-lg text-xs font-semibold text-center flex items-center justify-center space-x-1.5">
               <i class="${iconClass} text-xs sm:text-sm"></i>
               <span>${btnText}</span>
               <i class="fa-solid fa-arrow-up-right-from-square text-[9px] opacity-70"></i>
-            </a>
+            </button>
           </div>
         `;
         grid.insertAdjacentHTML('beforeend', card);
@@ -378,6 +375,27 @@
         return (item.judul || "").toLowerCase().includes(query) || (item.kategori || "").toLowerCase().includes(query) || (item.deskripsi || "").toLowerCase().includes(query);
       });
       renderCards(filtered);
+    }
+
+    function handleChangePasswordSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-pass-submit');
+      btn.disabled = true; btn.innerText = "...";
+
+      fetch(urlScript, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "changePassword",
+          oldPassword: document.getElementById('pass-lama').value,
+          newPassword: document.getElementById('pass-baru').value
+        })
+      })
+      .then(res => res.json())
+      .then(res => {
+        btn.disabled = false; btn.innerText = "Perbarui";
+        alert(res.message);
+        if(res.success) { closePassModal(); loadLogs(); }
+      }).catch(err => { alert("Error: " + err); btn.disabled = false; btn.innerText = "Perbarui"; });
     }
 
     function handleFormSubmit(e) {
@@ -410,7 +428,7 @@
       .then(response => response.json())
       .then(res => {
         btnSubmit.disabled = false; btnSubmit.innerText = "Simpan Data";
-        if(res.success) { closeModal(); loadData(); loadLogs(); } else { alert(res.message); }
+        if(res.success) { closeModal(); loadData(""); loadLogs(); } else { alert(res.message); }
       }).catch(err => { alert("Error: " + err); btnSubmit.disabled = false; btnSubmit.innerText = "Simpan Data"; });
     }
 
@@ -420,7 +438,7 @@
         showLoading(true);
         fetch(urlScript, { method: "POST", body: JSON.stringify({ action: "delete", id: id }) })
         .then(response => response.json())
-        .then(res => { if(res.success) { loadData(); loadLogs(); } else { alert(res.message); showLoading(false); } })
+        .then(res => { if(res.success) { loadData(""); loadLogs(); } else { alert(res.message); showLoading(false); } })
         .catch(err => { alert("Error: " + err); showLoading(false); });
       }
     }
