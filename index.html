@@ -17,9 +17,16 @@
           <i class="fa-solid fa-cloud-arrow-up text-xl sm:text-2xl"></i>
           <span class="font-bold text-base sm:text-lg tracking-wide">DriveCatalog</span>
         </div>
-        <button onclick="openModal()" class="bg-white text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center shadow">
-          <i class="fa-solid fa-plus mr-1.5"></i> Tambah
-        </button>
+        <div class="flex items-center space-x-2">
+          <!-- Tombol Login / Logout Admin -->
+          <button id="btn-login-admin" onclick="handleAuthAction()" class="bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center shadow border border-indigo-500">
+            <i id="icon-login" class="fa-solid fa-lock mr-1.5"></i> <span id="text-login">Login Admin</span>
+          </button>
+          <!-- Tombol Tambah (Disembunyikan untuk user biasa secara default) -->
+          <button id="btn-tambah-katalog" onclick="openModal()" class="hidden bg-white text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center shadow">
+            <i class="fa-solid fa-plus mr-1.5"></i> Tambah
+          </button>
+        </div>
       </div>
     </div>
   </nav>
@@ -27,6 +34,13 @@
   <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
     
+    <!-- Informasi Status Peran Aktif -->
+    <div class="mb-4 text-right">
+      <span id="role-badge" class="inline-block bg-gray-200 text-gray-700 text-xs px-2.5 py-1 rounded-full font-medium">
+        <i class="fa-solid fa-eye mr-1"></i> Mode: Pengunjung (Lihat Saja)
+      </span>
+    </div>
+
     <!-- Dashboard Stats Widgets -->
     <div class="grid grid-cols-2 gap-3 mb-4 sm:mb-6">
       <div class="bg-white p-3 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
@@ -132,13 +146,63 @@
   </div>
 
   <script>
-    // URL Web App Google Script Anda
-    const urlScript = "https://script.google.com/macros/s/AKfycbwLX-HrqGvNcSqoi5-4nmLMN-vfkMrhToQaCWTrzCUwUtybnCg9ZgmJb9poqjWBTZgumQ/exec";
+    const urlScript = "https://script.google.com/macros/s/AKfycbyLQh7_7MR6akmW7TqgtNV2W8ll1JLME6ivCR96nb0pGzrGV1zKGohVwfuSR2mQ1W-W7A/exec";
     let allLinks = [];
+    let isAdmin = false;
 
     document.addEventListener("DOMContentLoaded", function() {
+      // Periksa status login yang tersimpan di browser
+      if (sessionStorage.getItem("isAdmin") === "true") {
+        setAdminMode(true);
+      }
       loadData();
     });
+
+    // SISTEM AUTHENTIKASI MODERASI
+    function handleAuthAction() {
+      if (isAdmin) {
+        // Proses Logout
+        setAdminMode(false);
+        sessionStorage.removeItem("isAdmin");
+        renderCards(allLinks);
+        alert("Anda telah keluar dari mode Admin.");
+      } else {
+        // Proses Login
+        const password = prompt("Masukkan Password Admin:");
+        if (password === null) return;
+        
+        if (password === "admin123") { // Silakan ganti kata sandi ini sesuai kebutuhan Anda
+          setAdminMode(true);
+          sessionStorage.setItem("isAdmin", "true");
+          renderCards(allLinks);
+          alert("Login Berhasil! Anda sekarang masuk sebagai Admin.");
+        } else {
+          alert("Password salah! Akses ditolak.");
+        }
+      }
+    }
+
+    function setAdminMode(status) {
+      isAdmin = status;
+      const btnTambah = document.getElementById('btn-tambah-katalog');
+      const textLogin = document.getElementById('text-login');
+      const iconLogin = document.getElementById('icon-login');
+      const badge = document.getElementById('role-badge');
+
+      if (status) {
+        btnTambah.classList.remove('hidden');
+        textLogin.innerText = "Logout Admin";
+        iconLogin.className = "fa-solid fa-unlock-keyhole mr-1.5";
+        badge.className = "inline-block bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-semibold";
+        badge.innerHTML = `<i class="fa-solid fa-user-gear mr-1"></i> Mode: Administrator`;
+      } else {
+        btnTambah.classList.add('hidden');
+        textLogin.innerText = "Login Admin";
+        iconLogin.className = "fa-solid fa-lock mr-1.5";
+        badge.className = "inline-block bg-gray-200 text-gray-700 text-xs px-2.5 py-1 rounded-full font-medium";
+        badge.innerHTML = `<i class="fa-solid fa-eye mr-1"></i> Mode: Pengunjung (Lihat Saja)`;
+      }
+    }
 
     function toggleSourceInput() {
       const type = document.querySelector('input[name="sourceType"]:checked').value;
@@ -152,7 +216,6 @@
       }
     }
 
-    // Ambil Data Menggunakan Fetch API JSON (Menggantikan google.script.run)
     function loadData() {
       showLoading(true);
       fetch(`${urlScript}?action=getDashboard`)
@@ -201,6 +264,14 @@
           btnText = "Buka Berkas PDF";
         }
 
+        // Tampilkan tombol modifikasi data HANYA JIKA status isAdmin bernilai TRUE
+        const adminControls = isAdmin ? `
+          <div class="flex space-x-1 text-gray-400">
+            <button onclick="editFormByIndex(${index})" class="p-1 hover:text-indigo-600 rounded text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
+            <button onclick="deleteConfirm('${item.id}')" class="p-1 hover:text-rose-600 rounded text-xs"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        ` : '';
+
         const card = `
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between hover:shadow-md transition duration-200">
             <div>
@@ -208,10 +279,7 @@
                 <span class="inline-block bg-indigo-50 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-semibold tracking-wide">
                   ${escapeHtml(item.kategori)}
                 </span>
-                <div class="flex space-x-1 text-gray-400">
-                  <button onclick="editFormByIndex(${index})" class="p-1 hover:text-indigo-600 rounded text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
-                  <button onclick="deleteConfirm('${item.id}')" class="p-1 hover:text-rose-600 rounded text-xs"><i class="fa-solid fa-trash"></i></button>
-                </div>
+                ${adminControls}
               </div>
               <h4 class="font-bold text-gray-800 text-sm sm:text-base line-clamp-1 mb-0.5">${escapeHtml(item.judul)}</h4>
               <p class="text-[11px] text-gray-500 line-clamp-2 mb-3 h-8">${escapeHtml(item.deskripsi) || 'Tidak ada deskripsi.'}</p>
@@ -240,6 +308,8 @@
 
     function handleFormSubmit(e) {
       e.preventDefault();
+      if (!isAdmin) { alert("Aksi ditolak. Anda bukan admin."); return; }
+      
       const btnSubmit = document.getElementById('btn-submit');
       btnSubmit.disabled = true;
       btnSubmit.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>...`;
@@ -274,7 +344,6 @@
       }
     }
 
-    // Kirim & Simpan Data Menggunakan POST Fetch API (Menggantikan google.script.run)
     function sendDataToGas(payload, btnSubmit) {
       fetch(urlScript, {
         method: "POST",
@@ -301,8 +370,8 @@
       });
     }
 
-    // Hapus Data Menggunakan POST Fetch API (Menggantikan google.script.run)
     function deleteConfirm(id) {
+      if (!isAdmin) { alert("Aksi ditolak. Anda bukan admin."); return; }
       if(confirm("Hapus data ini dari katalog?")) {
         showLoading(true);
         fetch(urlScript, {
